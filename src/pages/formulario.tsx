@@ -153,11 +153,15 @@ export default function PDFEditor() {
     // ejemplo de todo
     {
       text: "x ", // Texto fijo o variable
-      x: 396, // Posición X en puntos (1/72 de pulgada)
-      y: 107, // Posición Y 14 de diferencia entre cada rubrica
+      x: 162, // Posición X en puntos (1/72 de pulgada)
+      y: 39, // Posición Y 14 de diferencia entre cada rubrica
       size: 11,
       color: { r: 0, g: 0, b: 0 }, // Negro
     },
+    /*/RecomendariaAlAlumno: {
+        1: { x: 415, y: 54 }, //si
+        0: { x: 475, y: 54 }, //no
+      },*/
   ];
 
   // 2. FUNCIÓN PARA EDITAR EL PDF
