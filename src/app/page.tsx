@@ -259,7 +259,41 @@ export default function Test() {
   return (
     <div style={{ padding: "20px", maxWidth: "1000px", margin: "0 auto" }}>
       <h1 style={{ marginBottom: "20px" }}>Generador de Constancias</h1>
-      {/* // Agrega este botón en tu componente React */}
+      <h2>Paso 1</h2>
+      {/* Botón para descargar base csv */}
+      <div style={{ marginBottom: "20px" }}>
+        <a
+          href="/documents/FormularioEntradaDatos.xlsx"
+          download="FormularioEntradaDatos.xlsx"
+          style={{
+            display: "inline-block",
+            padding: "10px 20px",
+            backgroundColor: "#4CAF50",
+            color: "white",
+            textDecoration: "none",
+            borderRadius: "5px",
+            fontWeight: "bold",
+            textAlign: "center",
+            boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+            transition: "background-color 0.3s ease",
+          }}
+          onMouseOver={(e) =>
+            (e.currentTarget.style.backgroundColor = "#388E3C")
+          }
+          onMouseOut={(e) =>
+            (e.currentTarget.style.backgroundColor = "#4CAF50")
+          }
+        >
+          Descargar Formato CSV para guardar tus evaluaciones
+        </a>
+        <p style={{ marginTop: "10px", color: "#555", fontSize: "14px" }}>
+          Descarga el archivo de ejemplo{" "}
+          <strong>FormularioEntradaDatos.xlsx</strong> para usarlo como base en
+          la generación de constancias.
+        </p>
+      </div>
+      <h2>Paso 2</h2>
+      {/* // Agrega este botón para limpieza de csv */}
       <div style={{ marginBottom: "20px" }}>
         <a
           href="https://www-virtualbadge-io.translate.goog/resources/utf-8-converter-for-csv-files?_x_tr_sl=en&_x_tr_tl=es&_x_tr_hl=es&_x_tr_pto=tc"
@@ -291,6 +325,7 @@ export default function Test() {
           compatible con la librería <strong>pdf-lib</strong>.
         </p>
       </div>
+      <h2>Paso 3</h2>
       {/* Botón para procesar csv */}
       <div style={{ marginBottom: "20px" }}>
         <input
