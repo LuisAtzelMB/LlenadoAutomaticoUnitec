@@ -1,4 +1,3 @@
-"use client";
 import { useState, ChangeEvent } from "react";
 import { PDFDocument, rgb } from "pdf-lib";
 import JSZip from "jszip";
