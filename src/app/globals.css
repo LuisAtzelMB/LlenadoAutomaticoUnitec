@@ -1,1 +1,38 @@
+/* Aplica la fuente Roboto a todo el proyecto */
+body {
+  font-family: "Roboto", sans-serif;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  line-height: 1.6;
+  background-color: #f9f9f9; /* Color de fondo claro */
+  color: #333; /* Color de texto oscuro */
+}
 
+/* Estilos generales */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: "Roboto", sans-serif;
+  font-weight: 700; /* Negrita para encabezados */
+  margin: 0;
+}
+
+p {
+  font-family: "Roboto", sans-serif;
+  font-weight: 400; /* Regular para párrafos */
+  margin: 0 0 1em;
+}
+
+a {
+  font-family: "Roboto", sans-serif;
+  color: #007bff; /* Azul para enlaces */
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+}

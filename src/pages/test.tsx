@@ -1,6 +1,11 @@
+"use client";
+import "../app/globals.css";
+import "../app/layout.tsx";
 import { useState, ChangeEvent } from "react";
 import { PDFDocument, rgb } from "pdf-lib";
 import JSZip from "jszip";
+import Papa from "papaparse";
+import fontkit from "@pdf-lib/fontkit";
 
 type CSVData = Record<string, string>[];
 
@@ -12,9 +17,13 @@ export default function Test() {
 
   const pdfPath = "/documents/formato-pdf.pdf";
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
+  // Función para normalizar texto con tipos explícitos
+  const normalizeText = (text: string): string => {
+    return text.normalize("NFC");
+  };
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>): void => {
+    const selectedFile = e.target.files?.[0];
     if (!selectedFile) {
       setError("No se seleccionó ningún archivo.");
       return;
@@ -31,7 +40,7 @@ export default function Test() {
     }
   };
 
-  const handleUpload = async () => {
+  const handleUpload = async (): Promise<void> => {
     if (!file) {
       setError("Por favor, selecciona un archivo primero.");
       return;
@@ -40,44 +49,63 @@ export default function Test() {
     try {
       const text = await file.text();
       const result = parseCSV(text);
-      setData(result);
 
-      const pdfBytes = await fetch(pdfPath).then((res) => res.arrayBuffer());
-      const urls: string[] = [];
-      for (const row of result) {
-        const url = await generatePdfWithData(pdfBytes, row);
-        urls.push(url);
+      // Validación de tipos para los datos requeridos
+      if (result.length === 0) {
+        throw new Error("El CSV no contiene datos válidos.");
       }
+      if (!result[0]?.Nombre || !result[0]?.NoDeCuenta) {
+        throw new Error(
+          "El CSV debe contener las columnas 'Nombre' y 'NoDeCuenta'"
+        );
+      }
+
+      setData(result);
+      const pdfBytes = await fetch(pdfPath).then((res) => res.arrayBuffer());
+
+      const urls = await Promise.all(
+        result.map((row) => generatePdfWithData(pdfBytes, row))
+      );
       setPdfUrls(urls);
     } catch (err) {
-      setError("Error al procesar el archivo CSV.");
+      setError(
+        `Error al procesar el archivo CSV: ${
+          err instanceof Error ? err.message : String(err)
+        }`
+      );
       console.error(err);
     }
   };
 
+  // Parseo de CSV con tipos definidos
   const parseCSV = (csvText: string): CSVData => {
-    const lines = csvText.split("\n").filter((line) => line.trim() !== "");
-    if (lines.length === 0) return [];
+    const result = Papa.parse<Record<string, string>>(csvText, {
+      header: true,
+      skipEmptyLines: true,
+      transform: (value: string) => normalizeText(value.trim()),
+    });
 
-    const headers = lines[0].split(",").map((header) => header.trim());
+    if (result.errors.length > 0) {
+      console.warn("Errores al parsear CSV:", result.errors);
+    }
 
-    return lines
-      .slice(1)
-      .map((line) => {
-        const values = line.split(",");
-        return headers.reduce((obj, header, index) => {
-          obj[header] = values[index] ? values[index].trim() : "";
-          return obj;
-        }, {} as Record<string, string>);
-      })
-      .filter((row) => Object.values(row).some((val) => val !== ""));
+    return result.data;
   };
 
+  // Función con tipos explícitos para los parámetros
   const generatePdfWithData = async (
     pdfBytes: ArrayBuffer,
     row: Record<string, string>
   ) => {
     const pdfDoc = await PDFDocument.load(pdfBytes);
+    // Registrar fontkit
+    pdfDoc.registerFontkit(fontkit);
+    // Cargar la fuente Roboto desde la carpeta public/fonts
+    const fontBytes = await fetch("/fonts/Roboto-Regular.ttf").then((res) =>
+      res.arrayBuffer()
+    );
+    const customFont = await pdfDoc.embedFont(fontBytes, { subset: false });
+    // Obtener las páginas del PDF
     const pages = pdfDoc.getPages();
     const firstPage = pages[0];
 
@@ -158,7 +186,7 @@ export default function Test() {
 
     // Dibujar cada campo en el PDF
     for (const [field, value] of Object.entries(row)) {
-      // Campos especiales con coordenadas X e Y dinámicas
+      // Campos especiales con coordenadas X e Y dinámicas seccion habilidades y desempeño
       if (specialFieldsCoords[field]) {
         const numericValue = parseInt(value);
         if (!isNaN(numericValue)) {
@@ -168,12 +196,13 @@ export default function Test() {
               x: coords.x,
               y: coords.y,
               size: 11,
+              font: customFont,
               color: rgb(0, 0, 0),
             });
           }
         }
       }
-      // Campos de evaluación normales (solo X dinámica)
+      // Campos de evaluación normales (solo X dinámica) seccion evaluacion satisfaccion
       else if (evaluationFieldsY[field]) {
         const numericValue = parseInt(value);
         if (!isNaN(numericValue)) {
@@ -183,6 +212,7 @@ export default function Test() {
               x: xCoord,
               y: evaluationFieldsY[field],
               size: 11,
+              font: customFont,
               color: rgb(0, 0, 0),
             });
           }
@@ -195,6 +225,7 @@ export default function Test() {
           x,
           y,
           size: size || 11,
+          font: customFont,
           color: rgb(0, 0, 0),
         });
       }
@@ -205,30 +236,82 @@ export default function Test() {
     return URL.createObjectURL(blob);
   };
 
-  const handleDownloadAllZip = async () => {
+  const handleDownloadAllZip = async (): Promise<void> => {
     const zip = new JSZip();
-
-    for (let idx = 0; idx < pdfUrls.length; idx++) {
-      const url = pdfUrls[idx];
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const arrayBuffer = await blob.arrayBuffer();
-      zip.file(`pdf_${data[idx]?.Nombre || idx + 1}.pdf`, arrayBuffer);
-    }
+    await Promise.all(
+      pdfUrls.map(async (url, idx) => {
+        const response = await fetch(url);
+        const blob = await response.blob();
+        zip.file(`constancia_${data[idx]?.Nombre || idx + 1}.pdf`, blob);
+      })
+    );
 
     const zipBlob = await zip.generateAsync({ type: "blob" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(zipBlob);
-    link.download = "todos_los_pdfs.zip";
+    link.download = "constancias.zip";
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // Estilos con tipos CSSProperties
+  const buttonStyle: React.CSSProperties = {
+    padding: "8px 16px",
+    backgroundColor: "#4CAF50",
+    color: "white",
+    border: "none",
+    borderRadius: "4px",
+    cursor: "pointer",
+  };
+
   return (
     <div style={{ padding: "20px", maxWidth: "1000px", margin: "0 auto" }}>
       <h1 style={{ marginBottom: "20px" }}>Generador de Constancias</h1>
-
+      <h2>Paso 1</h2>
+      {/* Botón para descargar base csv */}
+      <div style={{ marginBottom: "20px" }}>
+        <a
+          href="/documents/FormularioEntradaDatos.xlsx"
+          download="FormularioEntradaDatos.xlsx"
+          style={{
+            display: "inline-block",
+            padding: "10px 20px",
+            backgroundColor: "#4CAF50",
+            color: "white",
+            textDecoration: "none",
+            borderRadius: "5px",
+            fontWeight: "bold",
+            textAlign: "center",
+            boxShadow: "0 4px 6px rgba(0, 0, 0, 0.1)",
+            transition: "background-color 0.3s ease",
+          }}
+          onMouseOver={(e) =>
+            (e.currentTarget.style.backgroundColor = "#388E3C")
+          }
+          onMouseOut={(e) =>
+            (e.currentTarget.style.backgroundColor = "#4CAF50")
+          }
+        >
+          Descargar Formato CSV para guardar tus evaluaciones
+        </a>
+        <p style={{ marginTop: "10px", color: "#555", fontSize: "14px" }}>
+          Descarga el archivo de ejemplo{" "}
+          <strong>FormularioEntradaDatos.xlsx</strong> para usarlo como base en
+          la generación de constancias.
+        </p>
+      </div>
+      <h2>Paso 2</h2>
+      {/* // Agrega este botón para limpieza de csv */}
+      <div style={{ marginBottom: "20px" }}>
+        <p style={{ marginTop: "10px", color: "#555", fontSize: "14px" }}>
+          Una vez lleno su formato en excel con los alumnos, guardelo usando el
+          formato <strong>CSV UTF-8 (delimitado por comas)(*.csv)</strong>. Ya
+          que si usa otro formato habra errores.
+        </p>
+      </div>
+      <h2>Paso 3</h2>
+      {/* Botón para procesar csv */}
       <div style={{ marginBottom: "20px" }}>
         <input
           type="file"
@@ -236,39 +319,18 @@ export default function Test() {
           onChange={handleFileChange}
           style={{ marginRight: "10px" }}
         />
-        <button
-          onClick={handleUpload}
-          style={{
-            padding: "8px 16px",
-            backgroundColor: "#4CAF50",
-            color: "white",
-            border: "none",
-            borderRadius: "4px",
-            cursor: "pointer",
-          }}
-        >
+        <button onClick={handleUpload} style={buttonStyle}>
           Procesar CSV
         </button>
       </div>
-
       {error && (
         <div style={{ color: "red", marginBottom: "20px" }}>{error}</div>
       )}
-
       {pdfUrls.length > 0 && (
         <div>
           <button
             onClick={handleDownloadAllZip}
-            style={{
-              margin: "20px 0",
-              padding: "10px 20px",
-              background: "#2196F3",
-              color: "#fff",
-              border: "none",
-              borderRadius: "5px",
-              cursor: "pointer",
-              fontWeight: "bold",
-            }}
+            style={{ ...buttonStyle, backgroundColor: "#2196F3" }}
           >
             Descargar todos los PDFs (ZIP)
           </button>
@@ -276,18 +338,14 @@ export default function Test() {
           <div style={{ marginTop: "30px" }}>
             {data.map((row, idx) => (
               <div key={idx} style={{ marginBottom: "40px" }}>
-                <h3 style={{ marginBottom: "10px" }}>
-                  {row.Nombre || `Documento ${idx + 1}`}
-                </h3>
-                {pdfUrls[idx] && (
-                  <iframe
-                    src={pdfUrls[idx]}
-                    width="100%"
-                    height="800px"
-                    style={{ border: "1px solid #ddd", borderRadius: "5px" }}
-                    title={`PDF - ${row.Nombre || idx + 1}`}
-                  />
-                )}
+                <h3>{row.Nombre || `Documento ${idx + 1}`}</h3>
+                <iframe
+                  src={pdfUrls[idx]}
+                  width="100%"
+                  height="800px"
+                  style={{ border: "1px solid #ddd", borderRadius: "5px" }}
+                  title={`PDF - ${row.Nombre || idx + 1}`}
+                />
               </div>
             ))}
           </div>

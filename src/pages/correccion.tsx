@@ -1,7 +1,11 @@
+"use client";
+import "../app/globals.css";
+import "../app/layout.tsx";
 import { useState, ChangeEvent } from "react";
 import { PDFDocument, rgb } from "pdf-lib";
 import JSZip from "jszip";
 import Papa from "papaparse";
+import fontkit from "@pdf-lib/fontkit";
 
 type CSVData = Record<string, string>[];
 
@@ -15,12 +19,7 @@ export default function Test() {
 
   // Función para normalizar texto con tipos explícitos
   const normalizeText = (text: string): string => {
-    return text
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[¿¡«»]/g, "")
-      .replace(/ñ/g, "n")
-      .replace(/Ñ/g, "N");
+    return text.normalize("NFC");
   };
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>): void => {
@@ -51,21 +50,22 @@ export default function Test() {
       const text = await file.text();
       const result = parseCSV(text);
 
-      // Validación de tipos para los datos requeridos
-      if (result.length === 0) {
-        throw new Error("El CSV no contiene datos válidos.");
-      }
-      if (!result[0]?.Nombre || !result[0]?.NoDeCuenta) {
+      // Filtrar los datos para eliminar objetos sin `Nombre`
+      const filteredData = result.filter(
+        (row) => row.Nombre && row.Nombre.trim() !== ""
+      );
+
+      if (filteredData.length === 0) {
         throw new Error(
-          "El CSV debe contener las columnas 'Nombre' y 'NoDeCuenta'"
+          "El CSV no contiene datos válidos con la columna 'Nombre'."
         );
       }
 
-      setData(result);
+      setData(filteredData);
       const pdfBytes = await fetch(pdfPath).then((res) => res.arrayBuffer());
 
       const urls = await Promise.all(
-        result.map((row) => generatePdfWithData(pdfBytes, row))
+        filteredData.map((row) => generatePdfWithData(pdfBytes, row))
       );
       setPdfUrls(urls);
     } catch (err) {
@@ -99,6 +99,14 @@ export default function Test() {
     row: Record<string, string>
   ) => {
     const pdfDoc = await PDFDocument.load(pdfBytes);
+    // Registrar fontkit
+    pdfDoc.registerFontkit(fontkit);
+    // Cargar la fuente Roboto desde la carpeta public/fonts
+    const fontBytes = await fetch("/fonts/Roboto-Regular.ttf").then((res) =>
+      res.arrayBuffer()
+    );
+    const customFont = await pdfDoc.embedFont(fontBytes, { subset: false });
+    // Obtener las páginas del PDF
     const pages = pdfDoc.getPages();
     const firstPage = pages[0];
 
@@ -133,7 +141,7 @@ export default function Test() {
     // Campos especiales con coordenadas X e Y dinámicas
     const specialFieldsCoords: Record<
       string,
-      Record<number, { x: number; y: number }>
+      Record<string, { x: number; y: number }>
     > = {
       ConsideraQueElDesempenoDelAlumnoFue: {
         6: { x: 243, y: 77 },
@@ -179,7 +187,7 @@ export default function Test() {
 
     // Dibujar cada campo en el PDF
     for (const [field, value] of Object.entries(row)) {
-      // Campos especiales con coordenadas X e Y dinámicas
+      // Campos especiales con coordenadas X e Y dinámicas seccion habilidades y desempeño
       if (specialFieldsCoords[field]) {
         const numericValue = parseInt(value);
         if (!isNaN(numericValue)) {
@@ -189,12 +197,13 @@ export default function Test() {
               x: coords.x,
               y: coords.y,
               size: 11,
+              font: customFont,
               color: rgb(0, 0, 0),
             });
           }
         }
       }
-      // Campos de evaluación normales (solo X dinámica)
+      // Campos de evaluación normales (solo X dinámica) seccion evaluacion satisfaccion
       else if (evaluationFieldsY[field]) {
         const numericValue = parseInt(value);
         if (!isNaN(numericValue)) {
@@ -204,6 +213,7 @@ export default function Test() {
               x: xCoord,
               y: evaluationFieldsY[field],
               size: 11,
+              font: customFont,
               color: rgb(0, 0, 0),
             });
           }
@@ -216,6 +226,7 @@ export default function Test() {
           x,
           y,
           size: size || 11,
+          font: customFont,
           color: rgb(0, 0, 0),
         });
       }
@@ -258,16 +269,16 @@ export default function Test() {
   return (
     <div style={{ padding: "20px", maxWidth: "1000px", margin: "0 auto" }}>
       <h1 style={{ marginBottom: "20px" }}>Generador de Constancias</h1>
-      {/* // Agrega este botón en tu componente React */}
+      <h2>Paso 1</h2>
+      {/* Botón para descargar base csv */}
       <div style={{ marginBottom: "20px" }}>
         <a
-          href="https://www-virtualbadge-io.translate.goog/resources/utf-8-converter-for-csv-files?_x_tr_sl=en&_x_tr_tl=es&_x_tr_hl=es&_x_tr_pto=tc"
-          target="_blank"
-          rel="noopener noreferrer"
+          href="/documents/FormularioEntradaDatos.xlsx"
+          download="FormularioEntradaDatos.xlsx"
           style={{
             display: "inline-block",
             padding: "10px 20px",
-            backgroundColor: "#FF5722",
+            backgroundColor: "#4CAF50",
             color: "white",
             textDecoration: "none",
             borderRadius: "5px",
@@ -277,19 +288,30 @@ export default function Test() {
             transition: "background-color 0.3s ease",
           }}
           onMouseOver={(e) =>
-            (e.currentTarget.style.backgroundColor = "#E64A19")
+            (e.currentTarget.style.backgroundColor = "#388E3C")
           }
           onMouseOut={(e) =>
-            (e.currentTarget.style.backgroundColor = "#FF5722")
+            (e.currentTarget.style.backgroundColor = "#4CAF50")
           }
         >
-          Limpiar Formato CSV
+          Descargar Formato CSV para guardar tus evaluaciones
         </a>
         <p style={{ marginTop: "10px", color: "#555", fontSize: "14px" }}>
-          Usa esta herramienta para convertir tu archivo CSV a un formato UTF-8
-          compatible con la librería <strong>pdf-lib</strong>.
+          Descarga el archivo de ejemplo{" "}
+          <strong>FormularioEntradaDatos.xlsx</strong> para usarlo como base en
+          la generación de constancias.
         </p>
       </div>
+      <h2>Paso 2</h2>
+      {/* // Agrega este botón para limpieza de csv */}
+      <div style={{ marginBottom: "20px" }}>
+        <p style={{ marginTop: "10px", color: "#555", fontSize: "14px" }}>
+          Una vez lleno su formato en excel con los alumnos, guardelo usando el
+          formato <strong>CSV UTF-8 (delimitado por comas)(*.csv)</strong>. Ya
+          que si usa otro formato habra errores.
+        </p>
+      </div>
+      <h2>Paso 3</h2>
       {/* Botón para procesar csv */}
       <div style={{ marginBottom: "20px" }}>
         <input
