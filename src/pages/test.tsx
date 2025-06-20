@@ -17,7 +17,6 @@ export default function Test() {
 
   const pdfPath = "/documents/formato-pdf.pdf";
 
-  // Función para normalizar texto con tipos explícitos
   const normalizeText = (text: string): string => {
     return text.normalize("NFC");
   };
@@ -50,21 +49,21 @@ export default function Test() {
       const text = await file.text();
       const result = parseCSV(text);
 
-      // Validación de tipos para los datos requeridos
-      if (result.length === 0) {
-        throw new Error("El CSV no contiene datos válidos.");
-      }
-      if (!result[0]?.Nombre || !result[0]?.NoDeCuenta) {
+      const filteredData = result.filter(
+        (row) => row.Nombre && row.Nombre.trim() !== ""
+      );
+
+      if (filteredData.length === 0) {
         throw new Error(
-          "El CSV debe contener las columnas 'Nombre' y 'NoDeCuenta'"
+          "El CSV no contiene datos válidos con la columna 'Nombre'."
         );
       }
 
-      setData(result);
+      setData(filteredData);
       const pdfBytes = await fetch(pdfPath).then((res) => res.arrayBuffer());
 
       const urls = await Promise.all(
-        result.map((row) => generatePdfWithData(pdfBytes, row))
+        filteredData.map((row) => generatePdfWithData(pdfBytes, row))
       );
       setPdfUrls(urls);
     } catch (err) {
@@ -77,7 +76,6 @@ export default function Test() {
     }
   };
 
-  // Parseo de CSV con tipos definidos
   const parseCSV = (csvText: string): CSVData => {
     const result = Papa.parse<Record<string, string>>(csvText, {
       header: true,
@@ -92,24 +90,26 @@ export default function Test() {
     return result.data;
   };
 
-  // Función con tipos explícitos para los parámetros
   const generatePdfWithData = async (
     pdfBytes: ArrayBuffer,
     row: Record<string, string>
   ) => {
     const pdfDoc = await PDFDocument.load(pdfBytes);
-    // Registrar fontkit
     pdfDoc.registerFontkit(fontkit);
-    // Cargar la fuente Roboto desde la carpeta public/fonts
     const fontBytes = await fetch("/fonts/Roboto-Regular.ttf").then((res) =>
       res.arrayBuffer()
     );
     const customFont = await pdfDoc.embedFont(fontBytes, { subset: false });
-    // Obtener las páginas del PDF
+
     const pages = pdfDoc.getPages();
     const firstPage = pages[0];
 
-    // Mapeo de valores a coordenadas X para las X (1-6)
+    // Asegurarnos que exista la segunda página
+    const secondPage =
+      pages.length > 1
+        ? pages[1]
+        : pdfDoc.addPage([firstPage.getWidth(), firstPage.getHeight()]);
+
     const ratingCoordsX: Record<number, number> = {
       6: 231,
       5: 279,
@@ -119,7 +119,6 @@ export default function Test() {
       1: 471,
     };
 
-    // Coordenadas Y base para cada campo de evaluación
     const evaluationFieldsY: Record<string, number> = {
       ResponsabilidadEnSuTrabajo: 458,
       Iniciativa: 443,
@@ -137,10 +136,10 @@ export default function Test() {
       ImagenPersonal: 193,
       Conducta: 175,
     };
-    // Campos especiales con coordenadas X e Y dinámicas
+
     const specialFieldsCoords: Record<
       string,
-      Record<number, { x: number; y: number }>
+      Record<string, { x: number; y: number }>
     > = {
       ConsideraQueElDesempenoDelAlumnoFue: {
         6: { x: 243, y: 77 },
@@ -151,13 +150,13 @@ export default function Test() {
         1: { x: 484, y: 77 },
       },
       RecomendariaAlAlumno: {
-        1: { x: 415, y: 54 }, //si
-        0: { x: 475, y: 54 }, //no
+        1: { x: 415, y: 54 },
+        0: { x: 475, y: 54 },
       },
     };
 
-    // Coordenadas para los demás campos (texto normal)
-    const fieldPositions: Record<
+    // Coordenadas para la primera página
+    const fieldPositionsPage1: Record<
       string,
       { x: number; y: number; size?: number }
     > = {
@@ -180,13 +179,22 @@ export default function Test() {
       Autoeducacion: { x: 396, y: 117, size: 11 },
       EmpatiaYTolerancia: { x: 396, y: 107, size: 11 },
       ConsideraQueElDesempenoDelAlumnoFue: { x: 53, y: 65, size: 11 },
-
       Observaciones: { x: 162, y: 39, size: 11 },
     };
 
-    // Dibujar cada campo en el PDF
+    // Coordenadas para la segunda página (nuevas coordenadas)
+    const fieldPositionsPage2: Record<
+      string,
+      { x: number; y: number; size?: number }
+    > = {
+      Nombre: { x: 87, y: 493, size: 11 }, // Nueva posición para Nombre
+      NoDeCuenta: { x: 385, y: 493, size: 11 }, // Nueva posición para NoDeCuenta
+      DuracionDe: { x: 200, y: 312, size: 11 }, // Nueva posición para DuracionDe
+      atencion: { x: 135, y: 581, size: 11 }, // Nueva rúbrica
+    };
+
+    // Procesar campos en la primera página
     for (const [field, value] of Object.entries(row)) {
-      // Campos especiales con coordenadas X e Y dinámicas seccion habilidades y desempeño
       if (specialFieldsCoords[field]) {
         const numericValue = parseInt(value);
         if (!isNaN(numericValue)) {
@@ -201,9 +209,7 @@ export default function Test() {
             });
           }
         }
-      }
-      // Campos de evaluación normales (solo X dinámica) seccion evaluacion satisfaccion
-      else if (evaluationFieldsY[field]) {
+      } else if (evaluationFieldsY[field]) {
         const numericValue = parseInt(value);
         if (!isNaN(numericValue)) {
           const xCoord = ratingCoordsX[numericValue];
@@ -217,11 +223,23 @@ export default function Test() {
             });
           }
         }
-      }
-      // Otros campos (texto normal)
-      else if (fieldPositions[field]) {
-        const { x, y, size } = fieldPositions[field];
+      } else if (fieldPositionsPage1[field]) {
+        const { x, y, size } = fieldPositionsPage1[field];
         firstPage.drawText(value || "", {
+          x,
+          y,
+          size: size || 11,
+          font: customFont,
+          color: rgb(0, 0, 0),
+        });
+      }
+    }
+
+    // Procesar campos en la segunda página
+    for (const [field, value] of Object.entries(row)) {
+      if (fieldPositionsPage2[field]) {
+        const { x, y, size } = fieldPositionsPage2[field];
+        secondPage.drawText(value || "", {
           x,
           y,
           size: size || 11,
@@ -255,7 +273,6 @@ export default function Test() {
     document.body.removeChild(link);
   };
 
-  // Estilos con tipos CSSProperties
   const buttonStyle: React.CSSProperties = {
     padding: "8px 16px",
     backgroundColor: "#4CAF50",
@@ -269,7 +286,6 @@ export default function Test() {
     <div style={{ padding: "20px", maxWidth: "1000px", margin: "0 auto" }}>
       <h1 style={{ marginBottom: "20px" }}>Generador de Constancias</h1>
       <h2>Paso 1</h2>
-      {/* Botón para descargar base csv */}
       <div style={{ marginBottom: "20px" }}>
         <a
           href="/documents/FormularioEntradaDatos.xlsx"
@@ -302,7 +318,6 @@ export default function Test() {
         </p>
       </div>
       <h2>Paso 2</h2>
-      {/* // Agrega este botón para limpieza de csv */}
       <div style={{ marginBottom: "20px" }}>
         <p style={{ marginTop: "10px", color: "#555", fontSize: "14px" }}>
           Una vez lleno su formato en excel con los alumnos, guardelo usando el
@@ -311,7 +326,6 @@ export default function Test() {
         </p>
       </div>
       <h2>Paso 3</h2>
-      {/* Botón para procesar csv */}
       <div style={{ marginBottom: "20px" }}>
         <input
           type="file"
